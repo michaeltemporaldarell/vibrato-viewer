@@ -1,0 +1,18 @@
+{
+  "buildCommand": "cd vibrato-viewer && npm install && npm run build",
+  "outputDirectory": "vibrato-viewer/dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ],
+  "functions": {
+    "api/analyze.py": {
+      "runtime": "python3.9",
+      "maxDuration": 60
+    }
+  }
+}
+
