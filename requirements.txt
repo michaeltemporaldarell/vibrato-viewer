@@ -1,13 +1,12 @@
-# Core scientific computing
-numpy>=1.21.0
-scipy>=1.7.0
+# Core scientific computing (memory optimized versions)
+numpy>=1.21.0,<2.0.0
+scipy>=1.7.0,<1.12.0
 
 # Audio processing - soundfile required for librosa to avoid deprecated audioread
 soundfile>=0.12.1
-librosa>=0.10.0
+librosa>=0.10.0,<0.11.0
 
-# Visualization
-matplotlib>=3.5.0
+# Note: matplotlib removed - not needed for backend API (saves ~50MB memory)
 
 # Web framework
 fastapi>=0.104.0

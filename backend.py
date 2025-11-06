@@ -17,9 +17,14 @@ import os
 import json
 from pathlib import Path
 import warnings
+import gc
 
 # Suppress specific warnings about audioread deprecation
 warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
+
+# Memory optimization: Set max file size (10MB)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+MAX_AUDIO_DURATION = 60  # Max 60 seconds of audio
 
 app = FastAPI(title="Vibrato Analyzer API", version="1.0.0")
 
@@ -59,7 +64,7 @@ app.add_middleware(
 def load_audio_file(file_path):
     """
     Load audio file using the best available backend.
-    Tries soundfile first (preferred), falls back to librosa default.
+    Memory optimized: uses float32, resamples to 22050 Hz, enforces duration limits.
     """
     import traceback
     try:
@@ -70,18 +75,37 @@ def load_audio_file(file_path):
         print(f"  → File size: {os.path.getsize(file_path)} bytes")
         
         data, samplerate = sf.read(file_path, dtype='float32')
-        # Convert to mono if stereo
+        
+        # Convert to mono if stereo (memory efficient)
         if len(data.shape) > 1:
-            data = np.mean(data, axis=1)
-        print(f"  ✓ Loaded with soundfile (preferred method)")
+            data = np.mean(data, axis=1, dtype=np.float32)
+        
+        # Check duration and reject if too long
+        duration = len(data) / samplerate
+        if duration > MAX_AUDIO_DURATION:
+            raise ValueError(f"Audio too long: {duration:.1f}s (max {MAX_AUDIO_DURATION}s)")
+        
+        # Resample to 22050 Hz for memory efficiency (adequate for voice analysis)
+        if samplerate != 22050:
+            data = librosa.resample(data, orig_sr=samplerate, target_sr=22050)
+            samplerate = 22050
+        
+        print(f"  ✓ Loaded with soundfile ({duration:.1f}s, {samplerate}Hz)")
         return data, samplerate
     except Exception as e:
         print(f"  ✗ soundfile failed with error: {type(e).__name__}: {e}")
         print(f"  → Full traceback:")
         traceback.print_exc()
         print(f"  → Falling back to librosa.load()")
-        # Fall back to librosa's load function
-        return librosa.load(file_path, sr=None, mono=True)
+        # Fall back to librosa's load function with memory optimizations
+        data, sr = librosa.load(file_path, sr=22050, mono=True, dtype=np.float32)
+        
+        # Check duration
+        duration = len(data) / sr
+        if duration > MAX_AUDIO_DURATION:
+            raise ValueError(f"Audio too long: {duration:.1f}s (max {MAX_AUDIO_DURATION}s)")
+        
+        return data, sr
 
 def hz_to_cents(f_hz, f_ref):
     """Convert frequency deviation to cents relative to reference frequency."""
@@ -91,21 +115,31 @@ def hz_to_cents(f_hz, f_ref):
     return cents
 
 def extract_pitch(y, sr):
-    """Extract pitch contour from audio using pYIN algorithm."""
+    """
+    Extract pitch contour from audio using pYIN algorithm.
+    Memory optimized: reduced frame_length, explicit cleanup.
+    """
+    # Use smaller frame_length to reduce memory usage
+    frame_length = 1024  # Reduced from 2048
+    hop_length = 512
+    
     f0, voiced_flag, voiced_probs = librosa.pyin(
         y, 
         fmin=librosa.note_to_hz('C2'),
         fmax=librosa.note_to_hz('C6'),
         sr=sr,
-        frame_length=2048
+        frame_length=frame_length,
+        hop_length=hop_length
     )
     
-    hop_length = 512
     times = librosa.frames_to_time(
         np.arange(len(f0)), 
         sr=sr, 
         hop_length=hop_length
     )
+    
+    # Explicitly delete voiced_probs to free memory
+    del voiced_probs
     
     return f0, times, voiced_flag
 
@@ -202,17 +236,14 @@ def calculate_amplitude_envelope(y, sr, times):
     return amplitude_deviation, rms_smooth, rms_baseline
 
 def analyze_audio_data(y, sr):
-    """Main analysis function."""
-    # Extract pitch
+    """
+    Main analysis function.
+    Memory optimized: explicit cleanup, efficient data types.
+    """
+    # Extract pitch first
     f0, times, voiced_flag = extract_pitch(y, sr)
     
-    # Smooth pitch
-    f0_smooth = smooth_pitch(f0, window_len=11)
-    
-    # Detect vibrato
-    pitch_deviation, f0_mean, peaks, troughs = detect_vibrato(f0_smooth, times)
-    
-    # Calculate amplitude deviation from baseline
+    # Calculate amplitude deviation (need y for this)
     amplitude_deviation, amplitude_raw, amplitude_baseline = calculate_amplitude_envelope(y, sr, times)
     
     # Normalize raw amplitude to 0-1 for the correlation graph
@@ -222,18 +253,38 @@ def analyze_audio_data(y, sr):
     else:
         amplitude_normalized = amplitude_raw
     
-    # Prepare output data
+    # Clean up audio data and intermediate amplitude data - no longer needed
+    del y, amplitude_raw, amplitude_baseline
+    gc.collect()
+    
+    # Smooth pitch
+    f0_smooth = smooth_pitch(f0, window_len=11)
+    
+    # Clean up raw f0
+    del f0, voiced_flag
+    
+    # Detect vibrato
+    pitch_deviation, f0_mean, peaks, troughs = detect_vibrato(f0_smooth, times)
+    
+    # Clean up intermediate data
+    del f0_smooth, f0_mean
+    
+    # Prepare output data - convert to lists efficiently
     result = {
         "times": times.tolist(),
         "pitchDeviation": pitch_deviation.tolist(),
-        "amplitudeDeviation": amplitude_deviation.tolist(),  # Deviation from baseline (percentage)
-        "amplitude": amplitude_normalized.tolist(),  # Normalized for correlation graph
+        "amplitudeDeviation": amplitude_deviation.tolist(),
+        "amplitude": amplitude_normalized.tolist(),
         "peaks": peaks.tolist(),
         "troughs": troughs.tolist(),
         "oscillations": int(len(peaks)),
         "duration": float(times[-1]),
         "sampleRate": int(sr)
     }
+    
+    # Clean up remaining arrays
+    del pitch_deviation, amplitude_deviation, amplitude_normalized, times, peaks, troughs
+    gc.collect()
     
     return result
 
@@ -250,9 +301,10 @@ async def root():
 async def analyze_audio(file: UploadFile = File(...)):
     """
     Analyze an uploaded audio file for vibrato characteristics.
+    Memory optimized with file size limits and explicit cleanup.
     
     Args:
-        file: Audio file (WAV, MP3, FLAC, etc.)
+        file: Audio file (WAV, MP3, FLAC, etc.) - max 10MB, 60 seconds
     
     Returns:
         JSON object with analysis data including pitch deviation, amplitude, peaks, and troughs
@@ -267,18 +319,34 @@ async def analyze_audio(file: UploadFile = File(...)):
             detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"
         )
     
+    temp_path = None
+    
     # Create a temporary file to store the upload
     try:
+        # Read file content
+        content = await file.read()
+        
+        # Validate file size
+        file_size = len(content)
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {file_size/1024/1024:.1f}MB (max {MAX_FILE_SIZE/1024/1024:.0f}MB)"
+            )
+        
+        # Write to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
-            # Write uploaded file to temp file
-            content = await file.read()
             temp_file.write(content)
-            temp_file.flush()  # Ensure data is written to disk
-            os.fsync(temp_file.fileno())  # Force write to disk
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
             temp_path = temp_file.name
         
+        # Clean up content from memory
+        del content
+        gc.collect()
+        
         # Load and analyze the audio
-        print(f"Loading audio: {file.filename}")
+        print(f"Loading audio: {file.filename} ({file_size/1024:.0f}KB)")
         y, sr = load_audio_file(temp_path)
         
         print("Analyzing audio...")
@@ -287,13 +355,21 @@ async def analyze_audio(file: UploadFile = File(...)):
         # Clean up temp file
         os.unlink(temp_path)
         
+        # Force garbage collection before returning
+        gc.collect()
+        
         return JSONResponse(content=result)
     
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         # Clean up temp file if it exists
-        if 'temp_path' in locals() and os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
         
+        # Clean up and return error
+        gc.collect()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.get("/api/health")
