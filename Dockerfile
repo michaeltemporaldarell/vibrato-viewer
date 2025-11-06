@@ -25,6 +25,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY backend.py .
+COPY start.sh .
+
+# Make start script executable
+RUN chmod +x start.sh
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/vibrato-viewer/dist ./vibrato-viewer/dist
@@ -32,6 +36,6 @@ COPY --from=frontend-builder /app/vibrato-viewer/dist ./vibrato-viewer/dist
 # Expose port (Railway will override with $PORT)
 EXPOSE 8000
 
-# Start command (shell form allows $PORT variable expansion)
-CMD uvicorn backend:app --host 0.0.0.0 --port $PORT
+# Use entrypoint script
+CMD ["./start.sh"]
 
