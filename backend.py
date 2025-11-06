@@ -19,9 +19,21 @@ from pathlib import Path
 app = FastAPI(title="Vibrato Analyzer API", version="1.0.0")
 
 # Configure CORS to allow requests from the frontend
+# Supports both local development and production (Railway, etc.)
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+allowed_origins = [
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:3000",  # Alternative dev port
+    frontend_url,             # Production frontend URL
+]
+
+# If wildcard is explicitly requested (not recommended for production)
+if os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true":
+    allowed_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
