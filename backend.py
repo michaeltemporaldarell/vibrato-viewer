@@ -61,17 +61,24 @@ def load_audio_file(file_path):
     Load audio file using the best available backend.
     Tries soundfile first (preferred), falls back to librosa default.
     """
+    import traceback
     try:
         # Try soundfile directly first
         import soundfile as sf
+        print(f"  → Attempting soundfile.read on: {file_path}")
+        print(f"  → File exists: {os.path.exists(file_path)}")
+        print(f"  → File size: {os.path.getsize(file_path)} bytes")
+        
         data, samplerate = sf.read(file_path, dtype='float32')
         # Convert to mono if stereo
         if len(data.shape) > 1:
             data = np.mean(data, axis=1)
-        print(f"  → Loaded with soundfile (preferred method)")
+        print(f"  ✓ Loaded with soundfile (preferred method)")
         return data, samplerate
     except Exception as e:
-        print(f"  → soundfile failed: {e}")
+        print(f"  ✗ soundfile failed with error: {type(e).__name__}: {e}")
+        print(f"  → Full traceback:")
+        traceback.print_exc()
         print(f"  → Falling back to librosa.load()")
         # Fall back to librosa's load function
         return librosa.load(file_path, sr=None, mono=True)
