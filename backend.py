@@ -273,6 +273,8 @@ async def analyze_audio(file: UploadFile = File(...)):
             # Write uploaded file to temp file
             content = await file.read()
             temp_file.write(content)
+            temp_file.flush()  # Ensure data is written to disk
+            os.fsync(temp_file.fileno())  # Force write to disk
             temp_path = temp_file.name
         
         # Load and analyze the audio
