@@ -32,6 +32,6 @@ COPY --from=frontend-builder /app/vibrato-viewer/dist ./vibrato-viewer/dist
 # Expose port (Railway will override with $PORT)
 EXPOSE 8000
 
-# Start command
-CMD uvicorn backend:app --host 0.0.0.0 --port ${PORT:-8000}
+# Start command (use shell form for environment variable expansion)
+CMD ["sh", "-c", "uvicorn backend:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
