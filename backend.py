@@ -6,7 +6,8 @@ Run with: uvicorn backend:app --reload --host 0.0.0.0 --port 8000
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import numpy as np
 import librosa
 from scipy import signal
@@ -193,7 +194,7 @@ def analyze_audio_data(y, sr):
     
     return result
 
-@app.get("/")
+@app.get("/api")
 async def root():
     """Health check endpoint."""
     return {
@@ -202,7 +203,7 @@ async def root():
         "version": "1.0.0"
     }
 
-@app.post("/analyze")
+@app.post("/api/analyze")
 async def analyze_audio(file: UploadFile = File(...)):
     """
     Analyze an uploaded audio file for vibrato characteristics.
@@ -250,10 +251,45 @@ async def analyze_audio(file: UploadFile = File(...)):
         
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Health check endpoint for monitoring."""
     return {"status": "healthy"}
+
+# Serve frontend static files (for production deployment)
+frontend_dist = Path(__file__).parent / "vibrato-viewer" / "dist"
+if frontend_dist.exists():
+    # Mount static files (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
+    
+    # Serve index.html for the root route
+    @app.get("/")
+    async def serve_root():
+        """Serve the frontend app at root."""
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        # If frontend isn't built, show a helpful message
+        return {
+            "message": "Vibrato Analyzer API",
+            "status": "Frontend not built yet",
+            "hint": "Run 'cd vibrato-viewer && npm run build' to build the frontend",
+            "api_docs": "/docs"
+        }
+    
+    # Catch-all route for SPA (must be last)
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve the frontend app for all non-API routes."""
+        # API routes should 404 if not found
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        # Serve index.html for all other routes (SPA routing)
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend not built")
 
 if __name__ == "__main__":
     import uvicorn
