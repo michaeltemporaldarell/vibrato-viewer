@@ -17,14 +17,14 @@ interface Props {
   isPlaying: boolean
 }
 
-const ScrollingVibratoGraph = ({ analysisData, currentTime, duration, isPlaying }: Props) => {
+const ScrollingVibratoGraph = ({ analysisData, currentTime, duration: _duration, isPlaying }: Props) => {
   const pitchCanvasRef = useRef<HTMLCanvasElement>(null)
   const volumeCanvasRef = useRef<HTMLCanvasElement>(null)
   const correlationCanvasRef = useRef<HTMLCanvasElement>(null)
   const [windowSize, setWindowSize] = useState(5) // seconds visible on screen
 
   // Configuration
-  const SCROLL_SPEED = 1 // pixels per frame
+  // const SCROLL_SPEED = 1 // pixels per frame (reserved for future use)
   const HEIGHT_PITCH = 200
   const HEIGHT_VOLUME = 150
   const HEIGHT_CORRELATION = 150
@@ -175,7 +175,7 @@ const ScrollingVibratoGraph = ({ analysisData, currentTime, duration, isPlaying 
     startIdx: number,
     endIdx: number,
     timeToX: (t: number) => number,
-    width: number,
+    _width: number,
     height: number
   ) => {
     const centerY = height / 2
@@ -261,7 +261,7 @@ const ScrollingVibratoGraph = ({ analysisData, currentTime, duration, isPlaying 
     startIdx: number,
     endIdx: number,
     timeToX: (t: number) => number,
-    width: number,
+    _width: number,
     height: number
   ) => {
     const centerY = height / 2
@@ -328,7 +328,7 @@ const ScrollingVibratoGraph = ({ analysisData, currentTime, duration, isPlaying 
     startIdx: number,
     endIdx: number,
     timeToX: (t: number) => number,
-    width: number,
+    _width: number,
     height: number
   ) => {
     const centerY = height / 2
