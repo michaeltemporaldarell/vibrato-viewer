@@ -12,6 +12,8 @@ fi
 echo "✅ Build successful!"
 echo ""
 echo "🚀 Starting container on port 8000..."
+echo "Visit: http://localhost:8000"
+echo ""
 docker run -p 8000:8000 -e PORT=8000 vibrato-analyzer
 
 # To test with a different port:

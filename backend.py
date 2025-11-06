@@ -293,8 +293,10 @@ if frontend_dist.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Vibrato Analyzer API...")
-    print("Access the API at: http://localhost:8000")
-    print("API docs at: http://localhost:8000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    # Railway provides PORT env variable, default to 8000 for local dev
+    port = int(os.getenv("PORT", 8000))
+    print(f"Starting Vibrato Analyzer API on port {port}...")
+    print(f"Access the API at: http://localhost:{port}")
+    print(f"API docs at: http://localhost:{port}/docs")
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
