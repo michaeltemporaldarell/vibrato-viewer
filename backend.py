@@ -16,8 +16,24 @@ import tempfile
 import os
 import json
 from pathlib import Path
+import warnings
+
+# Suppress specific warnings about audioread deprecation
+warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
 
 app = FastAPI(title="Vibrato Analyzer API", version="1.0.0")
+
+# Check audio backend availability at startup
+try:
+    import soundfile as sf
+    SOUNDFILE_AVAILABLE = True
+    print(f"✓ soundfile {sf.__version__} loaded successfully")
+    print(f"  libsndfile version: {sf.__libsndfile_version__}")
+except Exception as e:
+    SOUNDFILE_AVAILABLE = False
+    print(f"✗ soundfile not available: {e}")
+    print("  Audio loading will use audioread (deprecated)")
+
 
 # Configure CORS to allow requests from the frontend
 # Supports both local development and production (Railway, etc.)
@@ -39,6 +55,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def load_audio_file(file_path):
+    """
+    Load audio file using the best available backend.
+    Tries soundfile first (preferred), falls back to librosa default.
+    """
+    try:
+        # Try soundfile directly first
+        import soundfile as sf
+        data, samplerate = sf.read(file_path, dtype='float32')
+        # Convert to mono if stereo
+        if len(data.shape) > 1:
+            data = np.mean(data, axis=1)
+        print(f"  → Loaded with soundfile (preferred method)")
+        return data, samplerate
+    except Exception as e:
+        print(f"  → soundfile failed: {e}")
+        print(f"  → Falling back to librosa.load()")
+        # Fall back to librosa's load function
+        return librosa.load(file_path, sr=None, mono=True)
 
 def hz_to_cents(f_hz, f_ref):
     """Convert frequency deviation to cents relative to reference frequency."""
@@ -234,7 +270,7 @@ async def analyze_audio(file: UploadFile = File(...)):
         
         # Load and analyze the audio
         print(f"Loading audio: {file.filename}")
-        y, sr = librosa.load(temp_path, sr=None)
+        y, sr = load_audio_file(temp_path)
         
         print("Analyzing audio...")
         result = analyze_audio_data(y, sr)
