@@ -7,22 +7,15 @@ __pycache__/
 venv/
 env/
 *.egg-info/
-dist/
-build/
 *.log
-sample-audio/
 
 # Node
 node_modules/
 .DS_Store
-vibrato-viewer/dist/
-dist-ssr/
-*.local
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Git
+.git/
+.gitignore
 
 # IDE
 .vscode/
@@ -34,9 +27,14 @@ dist-ssr/
 .DS_Store
 Thumbs.db
 
-# Vercel
+# Deployment
 .vercel
-
-# Railway
 .railway
+
+# Sample files (don't need in production)
+sample-audio/
+
+# Documentation
+*.md
+!README.md
 
